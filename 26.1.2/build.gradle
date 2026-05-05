@@ -1,0 +1,130 @@
+plugins {
+	id 'net.fabricmc.fabric-loom' version "${loom_version}"
+	id 'maven-publish'
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+	archivesName = project.archives_base_name
+}
+
+tasks.withType(AbstractArchiveTask).configureEach {
+	archiveBaseName = "${project.minecraft_version}-${project.archives_base_name}"
+	archiveVersion = "${project.mod_version}"
+}
+
+repositories {
+	maven { url = "https://maven.terraformersmc.com" }
+	maven { url = "https://maven.architectury.dev" }
+	maven {
+		name = "Ladysnake Libs"
+		url = 'https://maven.ladysnake.org/releases'
+	}
+}
+
+sourceSets {
+	main {
+		java {
+			exclude "dev/emi/trinkets/compat/TrinketsEmiPlugin.java", "dev/emi/trinkets/compat/TrinketsREIPlugin.java"
+		}
+	}
+
+	testmod {
+		compileClasspath += main.compileClasspath
+		runtimeClasspath += main.runtimeClasspath
+	}
+}
+
+loom {
+	accessWidenerPath = file("src/main/resources/trinkets.accesswidener")
+
+	mods {
+		"trinkets" {
+			sourceSet sourceSets.main
+		}
+	}
+
+	runs {
+		testmodClient {
+			client()
+			name = "Testmod Client"
+			source sourceSets.main
+			source sourceSets.testmod
+		}
+	}
+}
+dependencies {
+	// Base Fabric dependencies
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+
+	// Mod dependencies
+	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+	implementation include("org.ladysnake.cardinal-components-api:cardinal-components-base:${project.cca_version}")
+	implementation include("org.ladysnake.cardinal-components-api:cardinal-components-entity:${project.cca_version}")
+
+	// Dev Runtime
+	testmodImplementation sourceSets.main.output
+	//modLocalRuntime "dev.emi:emi-fabric:${emi_version}"
+	//modRuntimeOnly "me.shedaniel:RoughlyEnoughItems-fabric:${project.rei_version}"
+	//modLocalRuntime "com.terraformersmc:modmenu:${project.mod_menu_version}"
+}
+
+tasks.matching { it.name in ["processResources", "processDevResources", "processTestmodResources"] }.configureEach {
+	inputs.property "version", project.version
+
+	filesMatching("fabric.mod.json") {
+		expand "version": project.version
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	// ensure that the encoding is set to UTF-8, no matter what the system default is
+	// this fixes some edge cases with special characters not displaying correctly
+	// see http://yodaconditions.net/blog/fix-for-java-file-encoding-problems-with-gradle.html
+	// If Javadoc is generated, this must be specified in that task too.
+	it.options.encoding = "UTF-8"
+
+	// Minecraft 26.1.x uses Java 25.
+	it.options.release = 25
+}
+
+java {
+	// Loom will automatically attach sourcesJar to a RemapSourcesJar task and to the "build" task
+	// if it is present.
+	// If you remove this line, sources will not be generated.
+	withSourcesJar()
+
+	sourceCompatibility = JavaVersion.VERSION_25
+	targetCompatibility = JavaVersion.VERSION_25
+}
+
+jar {
+	from("LICENSE") {
+		rename { "${it}_${project.archives_base_name}"}
+	}
+}
+
+// configure the maven publication
+publishing {
+	publications {
+		mavenJava(MavenPublication) {
+			from components.java
+		}
+	}
+    setupRepositories(repositories)
+}
+
+void setupRepositories(RepositoryHandler repositories) {
+	if (project.hasProperty("mavenUrl")) {
+        repositories.maven {
+            url project.mavenUrl
+            credentials {
+                username project.mavenUsername
+                password project.mavenPassword
+            }
+        }
+    }
+}
